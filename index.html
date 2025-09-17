@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kanban Task Board</title>
+
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #fff;
+    --text: #333;
+    --border: #ddd;
+    --shadow: 0 2px 6px rgba(0,0,0,0.1);
+    --primary: #0079bf;
+    --low: #4caf50;
+    --medium: #ff9800;
+    --high: #f44336;
+  }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex; flex-direction: column;
+    min-height: 100vh;
+  }
+  header {
+    background: var(--primary);
+    color: #fff;
+    padding: 1rem;
+    text-align: center;
+    font-size: 1.4rem;
+    font-weight: bold;
+  }
+  .controls {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    padding: 10px;
+  }
+  .controls button {
+    background: var(--primary);
+    border: none;
+    color: #fff;
+    padding: 8px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    box-shadow: var(--shadow);
+    transition: 0.2s;
+  }
+  .controls button:hover { opacity: 0.9; }
+  main {
+    display: flex;
+    gap: 16px;
+    flex: 1;
+    padding: 20px;
+    overflow-x: auto;
+  }
+  .column {
+    flex: 1;
+    min-width: 280px;
+    background: #ebecf0;
+    border-radius: 10px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+  }
+  .column h2 {
+    margin: 0 0 10px;
+    font-size: 1.1rem;
+  }
+  .task-list {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .task {
+    background: var(--card);
+    padding: 12px;
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    cursor: grab;
+  }
+  .task.dragging { opacity: 0.5; }
+  .task h3 { margin: 0 0 6px; font-size: 1rem; }
+  .meta { font-size: 0.8rem; color: #666; }
+  .priority {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: #fff;
+  }
+  .low { background: var(--low); }
+  .medium { background: var(--medium); }
+  .high { background: var(--high); }
+  /* Modal */
+  .modal {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: none; justify-content: center; align-items: center;
+  }
+  .modal.active { display: flex; }
+  .modal-content {
+    background: #fff;
+    padding: 20px;
+    border-radius: 12px;
+    width: 320px;
+    box-shadow: var(--shadow);
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .modal-content input, .modal-content select, .modal-content textarea {
+    padding: 8px; border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .modal-content button {
+    align-self: flex-end;
+    background: var(--primary);
+    border: none; color: #fff;
+    padding: 8px 12px; border-radius: 6px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<header>Kanban Task Board</header>
+
+<div class="controls">
+  <button onclick="openModal()">➕ Add Task</button>
+  <button onclick="exportJSON()">💾 Export JSON</button>
+  <button onclick="importJSON()">📂 Import JSON</button>
+</div>
+
+<main>
+  <div class="column" data-status="todo">
+    <h2>To Do</h2>
+    <div class="task-list" id="todo"></div>
+  </div>
+  <div class="column" data-status="inprogress">
+    <h2>In Progress</h2>
+    <div class="task-list" id="inprogress"></div>
+  </div>
+  <div class="column" data-status="done">
+    <h2>Done</h2>
+    <div class="task-list" id="done"></div>
+  </div>
+</main>
+
+<!-- Modal -->
+<div class="modal" id="taskModal">
+  <div class="modal-content">
+    <h3>Add Task</h3>
+    <input type="text" id="title" placeholder="Task Title" />
+    <textarea id="desc" rows="3" placeholder="Description"></textarea>
+    <label>Due Date: <input type="date" id="dueDate" /></label>
+    <label>Priority:
+      <select id="priority">
+        <option value="low">Low</option>
+        <option value="medium" selected>Medium</option>
+        <option value="high">High</option>
+      </select>
+    </label>
+    <button onclick="saveTask()">Save</button>
+  </div>
+</div>
+
+<script>
+let tasks = JSON.parse(localStorage.getItem("kanbanTasks")) || [];
+
+function saveToLocal() {
+  localStorage.setItem("kanbanTasks", JSON.stringify(tasks));
+}
+
+function openModal() {
+  document.getElementById("taskModal").classList.add("active");
+}
+
+function closeModal() {
+  document.getElementById("taskModal").classList.remove("active");
+  document.getElementById("title").value = "";
+  document.getElementById("desc").value = "";
+  document.getElementById("dueDate").value = "";
+  document.getElementById("priority").value = "medium";
+}
+
+function saveTask() {
+  const title = document.getElementById("title").value.trim();
+  const desc = document.getElementById("desc").value.trim();
+  const dueDate = document.getElementById("dueDate").value;
+  const priority = document.getElementById("priority").value;
+  if (!title) { alert("Title required"); return; }
+  tasks.push({ id: Date.now(), title, desc, dueDate, priority, status: "todo" });
+  saveToLocal();
+  renderTasks();
+  closeModal();
+}
+
+function renderTasks() {
+  ["todo","inprogress","done"].forEach(s=>{
+    const container=document.getElementById(s);
+    container.innerHTML="";
+    tasks.filter(t=>t.status===s).forEach(t=>{
+      const div=document.createElement("div");
+      div.className="task"; div.draggable=true;
+      div.dataset.id=t.id;
+      div.innerHTML=`
+        <h3>${t.title}</h3>
+        <div class="meta">${t.desc||""}</div>
+        <div class="meta">Due: ${t.dueDate||"N/A"}</div>
+        <span class="priority ${t.priority}">${t.priority.toUpperCase()}</span>
+      `;
+      addDragEvents(div);
+      container.appendChild(div);
+    });
+  });
+}
+
+function addDragEvents(el) {
+  el.addEventListener("dragstart", e=>{
+    e.target.classList.add("dragging");
+  });
+  el.addEventListener("dragend", e=>{
+    e.target.classList.remove("dragging");
+  });
+}
+
+document.querySelectorAll(".task-list").forEach(list=>{
+  list.addEventListener("dragover", e=>{
+    e.preventDefault();
+    const dragging=document.querySelector(".dragging");
+    if(dragging) list.appendChild(dragging);
+  });
+  list.addEventListener("drop", e=>{
+    e.preventDefault();
+    const dragging=document.querySelector(".dragging");
+    if(dragging){
+      const id=parseInt(dragging.dataset.id);
+      const status=list.id;
+      const task=tasks.find(t=>t.id===id);
+      if(task){ task.status=status; saveToLocal(); }
+    }
+  });
+});
+
+// Export JSON
+function exportJSON() {
+  const blob=new Blob([JSON.stringify(tasks,null,2)],{type:"application/json"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url; a.download="kanban-tasks.json"; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Import JSON
+function importJSON() {
+  const input=document.createElement("input");
+  input.type="file"; input.accept="application/json";
+  input.onchange=e=>{
+    const file=e.target.files[0]; if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      tasks=JSON.parse(ev.target.result);
+      saveToLocal();
+      renderTasks();
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+// Modal close on background click
+document.getElementById("taskModal").addEventListener("click", e=>{
+  if(e.target.id==="taskModal") closeModal();
+});
+
+renderTasks();
+</script>
+</body>
+</html>
