@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kanban Board - ClickUp Style with Calendar</title>
+
+<style>
+  :root {
+    --bg: #f9fafb;
+    --sidebar: #1e1f25;
+    --primary: #7c3aed;
+    --card: #fff;
+    --border: #e5e7eb;
+    --text: #111827;
+    --muted: #6b7280;
+    --low: #10b981;
+    --medium: #f59e0b;
+    --high: #ef4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Inter", "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex; min-height: 100vh;
+  }
+  /* Sidebar */
+  .sidebar {
+    width: 220px;
+    background: var(--sidebar);
+    color: #fff;
+    padding: 20px 16px;
+    display: flex; flex-direction: column;
+    gap: 20px;
+  }
+  .sidebar h1 {
+    font-size: 1.2rem; font-weight: bold;
+    margin-bottom: 10px;
+  }
+  .sidebar button {
+    background: var(--primary);
+    border: none; color: #fff;
+    padding: 10px 14px; border-radius: 8px;
+    cursor: pointer; font-weight: 500;
+    transition: 0.2s;
+    text-align: left;
+  }
+  .sidebar button:hover { opacity: 0.9; }
+  /* Main area */
+  .main {
+    flex: 1; display: flex; flex-direction: column;
+  }
+  .topbar {
+    background: #fff;
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .topbar h2 { font-size: 1.2rem; font-weight: 600; }
+  .topbar-actions button {
+    background: var(--primary);
+    border: none; color: #fff;
+    padding: 8px 14px; border-radius: 6px;
+    margin-left: 8px; cursor: pointer;
+    font-weight: 500;
+  }
+  main {
+    flex: 1; display: flex; gap: 16px;
+    padding: 20px; overflow-x: auto;
+  }
+  /* Columns */
+  .column {
+    flex: 1; min-width: 300px;
+    background: #f3f4f6;
+    border-radius: 12px; padding: 12px;
+    display: flex; flex-direction: column;
+  }
+  .column h3 {
+    font-size: 1rem; font-weight: 600;
+    margin-bottom: 10px;
+  }
+  .task-list {
+    flex: 1; display: flex; flex-direction: column; gap: 12px;
+  }
+  /* Task cards */
+  .task {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    cursor: grab;
+  }
+  .task.dragging { opacity: 0.5; }
+  .task h4 { margin-bottom: 6px; font-size: 0.95rem; font-weight: 600; }
+  .desc { font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; }
+  .meta {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.8rem; color: var(--muted);
+  }
+  .priority {
+    padding: 2px 8px;
+    border-radius: 6px; font-size: 0.75rem;
+    font-weight: 600; color: #fff;
+  }
+  .low { background: var(--low); }
+  .medium { background: var(--medium); }
+  .high { background: var(--high); }
+
+  /* Calendar */
+  .calendar { 
+    display: none; 
+    padding: 20px; 
+  }
+  .calendar.active { display: block; }
+  .calendar-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 10px;
+  }
+  .calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+  }
+  .day {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px;
+    min-height: 80px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 0.8rem;
+    display: flex;
+    flex-direction: column;
+  }
+  .day:hover { background: #f3f4f6; }
+  .day-tasks { font-size: 0.7rem; margin-top: 4px; color: var(--muted); }
+  .today { border: 2px solid var(--primary); }
+  /* Modal */
+  .modal {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: none; justify-content: center; align-items: center;
+  }
+  .modal.active { display: flex; }
+  .modal-content {
+    background: #fff; padding: 20px;
+    border-radius: 12px; width: 340px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .modal-content input, .modal-content textarea, .modal-content select {
+    padding: 8px; border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .modal-content button {
+    align-self: flex-end;
+    background: var(--primary); border: none; color: #fff;
+    padding: 8px 12px; border-radius: 6px; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+  <aside class="sidebar">
+    <h1>⚡ MyBoard</h1>
+    <button onclick="openModal()">➕ Add Task</button>
+    <button onclick="exportJSON()">💾 Export JSON</button>
+    <button onclick="importJSON()">📂 Import JSON</button>
+    <button onclick="showKanban()">📋 Kanban Board</button>
+    <button onclick="showCalendar()">🗓 Calendar</button>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <h2 id="viewTitle">Project Workspace</h2>
+      <div class="topbar-actions">
+        <button onclick="openModal()">New Task</button>
+      </div>
+    </div>
+
+    <!-- Kanban -->
+    <main id="kanbanView">
+      <div class="column" data-status="todo">
+        <h3>To Do</h3>
+        <div class="task-list" id="todo"></div>
+      </div>
+      <div class="column" data-status="inprogress">
+        <h3>In Progress</h3>
+        <div class="task-list" id="inprogress"></div>
+      </div>
+      <div class="column" data-status="done">
+        <h3>Done</h3>
+        <div class="task-list" id="done"></div>
+      </div>
+    </main>
+
+    <!-- Calendar -->
+    <div class="calendar" id="calendarView">
+      <div class="calendar-header">
+        <button onclick="prevMonth()">◀</button>
+        <h3 id="calendarTitle"></h3>
+        <button onclick="nextMonth()">▶</button>
+      </div>
+      <div class="calendar-grid" id="calendarGrid"></div>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal" id="taskModal">
+    <div class="modal-content">
+      <h3>Add Task</h3>
+      <input type="text" id="title" placeholder="Task Title" />
+      <textarea id="desc" rows="3" placeholder="Description"></textarea>
+      <label>Due Date: <input type="date" id="dueDate" /></label>
+      <label>Priority:
+        <select id="priority">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+        </select>
+      </label>
+      <button onclick="saveTask()">Save</button>
+    </div>
+  </div>
+
+<script>
+let tasks = JSON.parse(localStorage.getItem("kanbanTasks")) || [];
+let currentMonth = new Date();
+
+function saveToLocal() {
+  localStorage.setItem("kanbanTasks", JSON.stringify(tasks));
+}
+
+function openModal(date="") {
+  document.getElementById("taskModal").classList.add("active");
+  document.getElementById("dueDate").value = date;
+}
+function closeModal() {
+  document.getElementById("taskModal").classList.remove("active");
+  document.getElementById("title").value = "";
+  document.getElementById("desc").value = "";
+  document.getElementById("dueDate").value = "";
+  document.getElementById("priority").value = "medium";
+}
+
+function saveTask() {
+  const title = document.getElementById("title").value.trim();
+  const desc = document.getElementById("desc").value.trim();
+  const dueDate = document.getElementById("dueDate").value;
+  const priority = document.getElementById("priority").value;
+  if (!title) { alert("Title required"); return; }
+  tasks.push({ id: Date.now(), title, desc, dueDate, priority, status: "todo" });
+  saveToLocal();
+  renderTasks();
+  renderCalendar();
+  closeModal();
+}
+
+function renderTasks() {
+  ["todo","inprogress","done"].forEach(s=>{
+    const container=document.getElementById(s);
+    container.innerHTML="";
+    tasks.filter(t=>t.status===s).forEach(t=>{
+      const div=document.createElement("div");
+      div.className="task"; div.draggable=true;
+      div.dataset.id=t.id;
+      div.innerHTML=`
+        <h4>${t.title}</h4>
+        <div class="desc">${t.desc||""}</div>
+        <div class="meta">
+          <span class="priority ${t.priority}">${t.priority.toUpperCase()}</span>
+          <span>📅 ${t.dueDate||"N/A"}</span>
+        </div>
+      `;
+      addDragEvents(div);
+      container.appendChild(div);
+    });
+  });
+}
+
+function addDragEvents(el) {
+  el.addEventListener("dragstart", e=>{
+    e.target.classList.add("dragging");
+  });
+  el.addEventListener("dragend", e=>{
+    e.target.classList.remove("dragging");
+  });
+}
+
+document.querySelectorAll(".task-list").forEach(list=>{
+  list.addEventListener("dragover", e=>{
+    e.preventDefault();
+    const dragging=document.querySelector(".dragging");
+    if(dragging) list.appendChild(dragging);
+  });
+  list.addEventListener("drop", e=>{
+    e.preventDefault();
+    const dragging=document.querySelector(".dragging");
+    if(dragging){
+      const id=parseInt(dragging.dataset.id);
+      const status=list.id;
+      const task=tasks.find(t=>t.id===id);
+      if(task){ task.status=status; saveToLocal(); }
+    }
+  });
+});
+
+// Export JSON
+function exportJSON() {
+  const blob=new Blob([JSON.stringify(tasks,null,2)],{type:"application/json"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url; a.download="kanban-tasks.json"; a.click();
+  URL.revokeObjectURL(url);
+}
+// Import JSON
+function importJSON() {
+  const input=document.createElement("input");
+  input.type="file"; input.accept="application/json";
+  input.onchange=e=>{
+    const file=e.target.files[0]; if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      tasks=JSON.parse(ev.target.result);
+      saveToLocal();
+      renderTasks();
+      renderCalendar();
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+document.getElementById("taskModal").addEventListener("click", e=>{
+  if(e.target.id==="taskModal") closeModal();
+});
+
+/* Calendar */
+function renderCalendar() {
+  const grid=document.getElementById("calendarGrid");
+  const title=document.getElementById("calendarTitle");
+  grid.innerHTML="";
+  const year=currentMonth.getFullYear();
+  const month=currentMonth.getMonth();
+  title.textContent=currentMonth.toLocaleString("default",{month:"long",year:"numeric"});
+  const firstDay=new Date(year,month,1);
+  const lastDay=new Date(year,month+1,0);
+  const startDay=firstDay.getDay();
+  const daysInMonth=lastDay.getDate();
+
+  // Fill blanks before
+  for(let i=0;i<startDay;i++){
+    const div=document.createElement("div");
+    grid.appendChild(div);
+  }
+
+  for(let d=1;d<=daysInMonth;d++){
+    const dateStr=`${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    const div=document.createElement("div");
+    div.className="day";
+    if(dateStr===new Date().toISOString().split("T")[0]) div.classList.add("today");
+    div.innerHTML=`<strong>${d}</strong>`;
+    const dayTasks=tasks.filter(t=>t.dueDate===dateStr);
+    if(dayTasks.length){
+      const span=document.createElement("div");
+      span.className="day-tasks";
+      span.textContent=dayTasks.length+" task(s)";
+      div.appendChild(span);
+    }
+    div.onclick=()=>openModal(dateStr);
+    grid.appendChild(div);
+  }
+}
+function prevMonth(){ currentMonth.setMonth(currentMonth.getMonth()-1); renderCalendar(); }
+function nextMonth(){ currentMonth.setMonth(currentMonth.getMonth()+1); renderCalendar(); }
+
+/* View Switch */
+function showKanban(){
+  document.getElementById("kanbanView").style.display="flex";
+  document.getElementById("calendarView").classList.remove("active");
+  document.getElementById("viewTitle").textContent="Project Workspace";
+}
+function showCalendar(){
+  document.getElementById("kanbanView").style.display="none";
+  document.getElementById("calendarView").classList.add("active");
+  document.getElementById("viewTitle").textContent="Calendar";
+  renderCalendar();
+}
+
+renderTasks();
+</script>
+</body>
+</html>
